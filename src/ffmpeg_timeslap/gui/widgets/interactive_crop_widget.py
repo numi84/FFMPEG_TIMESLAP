@@ -452,7 +452,22 @@ class InteractiveCropWidget(QWidget):
             self.info_label.setText("Fehler beim Laden des Bildes")
             return
 
+        # Save current crop settings before loading new image
+        saved_crop = None
+        if self.crop_label.original_pixmap:
+            saved_crop = QRect(self.crop_label.crop_rect)
+
         self.crop_label.set_image(pixmap)
+
+        # Restore crop settings if they exist and are valid for new image
+        if saved_crop is not None:
+            # Check if saved crop fits within new image dimensions
+            if (saved_crop.right() <= pixmap.width() and
+                saved_crop.bottom() <= pixmap.height()):
+                self.crop_label.set_crop_rect(
+                    saved_crop.x(), saved_crop.y(),
+                    saved_crop.width(), saved_crop.height()
+                )
 
         # Show current image info
         info_text = f"Bild: {pixmap.width()}x{pixmap.height()}"
