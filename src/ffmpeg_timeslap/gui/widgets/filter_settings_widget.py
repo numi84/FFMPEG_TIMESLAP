@@ -130,7 +130,7 @@ class FilterSettingsWidget(QWidget):
         self.rotate_group = QGroupBox("Rotate (Drehen)")
         self.rotate_group.setCheckable(True)
         self.rotate_group.setChecked(False)
-        self.rotate_group.toggled.connect(self.on_settings_changed)
+        self.rotate_group.toggled.connect(self.on_rotate_toggled)
         layout.addWidget(self.rotate_group)
 
         rotate_layout = QFormLayout()
@@ -205,27 +205,102 @@ class FilterSettingsWidget(QWidget):
     def on_rotate_angle_changed(self, value: int):
         """Handle rotate angle change."""
         self.rotate_angle_label.setText(f"{value}°")
+
+        # Update spinbox maximums based on transformed dimensions
+        self.update_spinbox_maximums()
+
         self.update_preview()
         self.settings_changed.emit()
 
+    def on_rotate_toggled(self, enabled: bool):
+        """Handle rotation enable/disable."""
+        # Update spinbox maximums when rotation is enabled/disabled
+        self.update_spinbox_maximums()
+        self.on_settings_changed()
+
+    def update_spinbox_maximums(self):
+        """Update crop spinbox maximum values based on transformed image dimensions."""
+        if self.image_width == 0 or self.image_height == 0:
+            return
+
+        # Get dimensions after rotation/flip transforms
+        transformed_width, transformed_height = self.get_transformed_dimensions()
+
+        # Update spinbox maximums
+        self.crop_x_spin.setMaximum(max(0, transformed_width - 32))
+        self.crop_y_spin.setMaximum(max(0, transformed_height - 32))
+        self.crop_w_spin.setMaximum(transformed_width)
+        self.crop_h_spin.setMaximum(transformed_height)
+
+        # Also validate current crop values against new bounds
+        self.validate_crop_against_bounds()
+
+    def validate_crop_against_bounds(self):
+        """Validate and adjust crop values to fit within transformed image bounds."""
+        transformed_width, transformed_height = self.get_transformed_dimensions()
+
+        if transformed_width == 0 or transformed_height == 0:
+            return
+
+        # Block signals to prevent recursive updates
+        self.crop_x_spin.blockSignals(True)
+        self.crop_y_spin.blockSignals(True)
+        self.crop_w_spin.blockSignals(True)
+        self.crop_h_spin.blockSignals(True)
+
+        # Get current values
+        x = self.crop_x_spin.value()
+        y = self.crop_y_spin.value()
+        w = self.crop_w_spin.value()
+        h = self.crop_h_spin.value()
+
+        # Constrain to transformed bounds
+        if x >= transformed_width:
+            x = max(0, transformed_width - 32)
+        if y >= transformed_height:
+            y = max(0, transformed_height - 32)
+
+        if x + w > transformed_width:
+            w = max(32, transformed_width - x)
+            w = (w // 2) * 2  # Round to even
+
+        if y + h > transformed_height:
+            h = max(32, transformed_height - y)
+            h = (h // 2) * 2  # Round to even
+
+        # Update values
+        self.crop_x_spin.setValue(x)
+        self.crop_y_spin.setValue(y)
+        self.crop_w_spin.setValue(w)
+        self.crop_h_spin.setValue(h)
+
+        # Restore signals
+        self.crop_x_spin.blockSignals(False)
+        self.crop_y_spin.blockSignals(False)
+        self.crop_w_spin.blockSignals(False)
+        self.crop_h_spin.blockSignals(False)
+
     def on_crop_value_changed(self):
         """Handle crop value change with validation."""
-        if self.image_width > 0 and self.image_height > 0:
+        # Use transformed dimensions instead of original
+        transformed_width, transformed_height = self.get_transformed_dimensions()
+
+        if transformed_width > 0 and transformed_height > 0:
             # Validate crop boundaries
             x = self.crop_x_spin.value()
             y = self.crop_y_spin.value()
             w = self.crop_w_spin.value()
             h = self.crop_h_spin.value()
 
-            # Ensure crop doesn't exceed image boundaries
-            if x + w > self.image_width:
+            # Ensure crop doesn't exceed transformed image boundaries
+            if x + w > transformed_width:
                 # Adjust width to fit
-                new_w = self.image_width - x
+                new_w = transformed_width - x
                 # Round down to even
                 new_w = (new_w // 2) * 2
                 if new_w < 32:
                     # If width too small, adjust x instead
-                    x = self.image_width - w
+                    x = transformed_width - w
                     x = max(0, (x // 2) * 2)
                     self.crop_x_spin.blockSignals(True)
                     self.crop_x_spin.setValue(x)
@@ -235,14 +310,14 @@ class FilterSettingsWidget(QWidget):
                     self.crop_w_spin.setValue(new_w)
                     self.crop_w_spin.blockSignals(False)
 
-            if y + h > self.image_height:
+            if y + h > transformed_height:
                 # Adjust height to fit
-                new_h = self.image_height - y
+                new_h = transformed_height - y
                 # Round down to even
                 new_h = (new_h // 2) * 2
                 if new_h < 32:
                     # If height too small, adjust y instead
-                    y = self.image_height - h
+                    y = transformed_height - h
                     y = max(0, (y // 2) * 2)
                     self.crop_y_spin.blockSignals(True)
                     self.crop_y_spin.setValue(y)
@@ -294,14 +369,44 @@ class FilterSettingsWidget(QWidget):
                 self.image_width = img.width
                 self.image_height = img.height
 
-                # Update crop spinbox maximums
-                self.crop_x_spin.setMaximum(self.image_width - 32)
-                self.crop_y_spin.setMaximum(self.image_height - 32)
-                self.crop_w_spin.setMaximum(self.image_width)
-                self.crop_h_spin.setMaximum(self.image_height)
+                # Update crop spinbox maximums based on current transforms
+                self.update_spinbox_maximums()
 
         except Exception as e:
             print(f"Error loading image dimensions: {e}")
+
+    def get_transformed_dimensions(self) -> tuple[int, int]:
+        """
+        Get image dimensions after rotation/flip transforms are applied.
+        This mirrors the logic in InteractiveCropLabel._get_transformed_size()
+        """
+        width = self.image_width
+        height = self.image_height
+
+        if width == 0 or height == 0:
+            return (width, height)
+
+        # Get rotation angle if enabled
+        if self.is_rotate_enabled():
+            angle = self.get_rotate_angle() % 360
+
+            if angle in [90, 270]:
+                width, height = height, width
+            elif angle in [0, 180]:
+                pass  # No dimension change
+            else:
+                # Calculate bounding box for arbitrary angles
+                import math
+                rad = math.radians(angle)
+                cos_a = abs(math.cos(rad))
+                sin_a = abs(math.sin(rad))
+
+                new_width = int(self.image_width * cos_a + self.image_height * sin_a)
+                new_height = int(self.image_width * sin_a + self.image_height * cos_a)
+
+                width, height = new_width, new_height
+
+        return (width, height)
 
     def update_preview(self):
         """Update preview with current filter settings."""
@@ -340,11 +445,8 @@ class FilterSettingsWidget(QWidget):
                 self.image_width = img.width
                 self.image_height = img.height
 
-                # Update crop spinbox maximums
-                self.crop_x_spin.setMaximum(self.image_width - 32)
-                self.crop_y_spin.setMaximum(self.image_height - 32)
-                self.crop_w_spin.setMaximum(self.image_width)
-                self.crop_h_spin.setMaximum(self.image_height)
+                # Update crop spinbox maximums based on current transforms
+                self.update_spinbox_maximums()
 
                 # Set initial crop to full image if not set
                 if self.crop_w_spin.value() == 1920 and self.crop_h_spin.value() == 1080:

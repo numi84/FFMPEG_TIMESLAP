@@ -267,9 +267,28 @@ class InteractiveCropLabel(QLabel):
         width = self.original_pixmap.width()
         height = self.original_pixmap.height()
 
-        # Rotation by 90° or 270° swaps width and height
-        if self.rotate_angle in [90, 270]:
+        # Normalize angle to 0-359 range
+        angle = self.rotate_angle % 360
+
+        # Handle common angles
+        if angle in [90, 270]:
+            # Rotation by 90° or 270° swaps width and height
             width, height = height, width
+        elif angle in [0, 180]:
+            # No dimension change for 0° or 180°
+            pass
+        else:
+            # For arbitrary angles, calculate bounding box
+            # This matches Qt's QPixmap.transformed() behavior
+            import math
+            rad = math.radians(angle)
+            cos_a = abs(math.cos(rad))
+            sin_a = abs(math.sin(rad))
+
+            new_width = int(width * cos_a + height * sin_a)
+            new_height = int(width * sin_a + height * cos_a)
+
+            width, height = new_width, new_height
 
         return (width, height)
 
