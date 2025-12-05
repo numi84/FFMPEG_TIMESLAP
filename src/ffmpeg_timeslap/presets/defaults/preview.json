@@ -1,0 +1,28 @@
+{
+  "name": "Schnelle Vorschau",
+  "description": "Schnelles Encoding für Vorschau und Tests. Niedrige Auflösung und ultrafast Preset.",
+  "settings": {
+    "framerate": 30,
+    "codec": "libx264",
+    "crf": 23,
+    "preset": "ultrafast",
+    "profile": "baseline",
+    "level": "3.0",
+    "pixel_format": "yuv420p",
+    "output_resolution": "1280x720",
+    "custom_resolution": null,
+    "movflags_faststart": true,
+    "pattern_type": "sequential",
+    "custom_args": "",
+    "deflicker_enabled": false,
+    "deflicker_mode": "pm",
+    "deflicker_size": 10,
+    "crop_enabled": false,
+    "crop_x": 0,
+    "crop_y": 0,
+    "crop_w": 0,
+    "crop_h": 0,
+    "rotate_enabled": false,
+    "rotate_angle": 0
+  }
+}

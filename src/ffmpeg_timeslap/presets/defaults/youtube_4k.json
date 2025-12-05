@@ -1,0 +1,28 @@
+{
+  "name": "YouTube 4K",
+  "description": "Optimiert für YouTube 4K Upload. H.265 für bessere Kompression bei hoher Auflösung.",
+  "settings": {
+    "framerate": 30,
+    "codec": "libx265",
+    "crf": 20,
+    "preset": "medium",
+    "profile": "main",
+    "level": "5.1",
+    "pixel_format": "yuv420p",
+    "output_resolution": "3840x2160",
+    "custom_resolution": null,
+    "movflags_faststart": true,
+    "pattern_type": "sequential",
+    "custom_args": "",
+    "deflicker_enabled": false,
+    "deflicker_mode": "pm",
+    "deflicker_size": 10,
+    "crop_enabled": false,
+    "crop_x": 0,
+    "crop_y": 0,
+    "crop_w": 0,
+    "crop_h": 0,
+    "rotate_enabled": false,
+    "rotate_angle": 0
+  }
+}

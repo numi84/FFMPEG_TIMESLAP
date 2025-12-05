@@ -1,0 +1,9 @@
+# Ignore all FFMPEG binaries (too large for git)
+*.exe
+ffmpeg
+ffmpeg.exe
+
+# Keep the directory structure and documentation
+!README.md
+!LICENSE.txt
+!.gitignore

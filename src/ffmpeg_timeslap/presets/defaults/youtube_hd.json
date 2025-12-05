@@ -1,0 +1,28 @@
+{
+  "name": "YouTube HD",
+  "description": "Optimiert für YouTube 1080p Upload. H.264 mit hoher Qualität für beste Kompatibilität.",
+  "settings": {
+    "framerate": 30,
+    "codec": "libx264",
+    "crf": 18,
+    "preset": "slow",
+    "profile": "high",
+    "level": "4.0",
+    "pixel_format": "yuv420p",
+    "output_resolution": "1920x1080",
+    "custom_resolution": null,
+    "movflags_faststart": true,
+    "pattern_type": "sequential",
+    "custom_args": "",
+    "deflicker_enabled": false,
+    "deflicker_mode": "pm",
+    "deflicker_size": 10,
+    "crop_enabled": false,
+    "crop_x": 0,
+    "crop_y": 0,
+    "crop_w": 0,
+    "crop_h": 0,
+    "rotate_enabled": false,
+    "rotate_angle": 0
+  }
+}
