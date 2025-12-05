@@ -18,8 +18,9 @@ class InteractiveCropLabel(QLabel):
 
         self.original_pixmap: Optional[QPixmap] = None
         self.display_scale = 1.0
+        self.display_offset = QPoint(0, 0)  # Offset for centered image
 
-        # Crop rectangle in original image coordinates
+        # Crop rectangle in transformed image coordinates
         self.crop_rect = QRect(0, 0, 100, 100)
         self.is_dragging = False
         self.is_resizing = False
@@ -43,7 +44,14 @@ class InteractiveCropLabel(QLabel):
     def set_image(self, pixmap: QPixmap):
         """Set the image to display."""
         self.original_pixmap = pixmap
+        # Reset transformations when loading new image
+        self.rotate_angle = 0.0
+        self.flip_horizontal = False
+        self.flip_vertical = False
+        # Set crop to full image
         self.crop_rect = QRect(0, 0, pixmap.width(), pixmap.height())
+        # Force widget to calculate proper size before first display
+        self.updateGeometry()
         self.update_display()
 
     def set_crop_rect(self, x: int, y: int, w: int, h: int):
@@ -54,9 +62,20 @@ class InteractiveCropLabel(QLabel):
 
     def set_transforms(self, rotate: float, flip_h: bool, flip_v: bool):
         """Set rotation and flip transforms."""
-        self.rotate_angle = rotate
-        self.flip_horizontal = flip_h
-        self.flip_vertical = flip_v
+        old_transforms = (self.rotate_angle, self.flip_horizontal, self.flip_vertical)
+        new_transforms = (rotate, flip_h, flip_v)
+
+        # If transforms changed, reset crop to full transformed image
+        if old_transforms != new_transforms:
+            self.rotate_angle = rotate
+            self.flip_horizontal = flip_h
+            self.flip_vertical = flip_v
+
+            # Reset crop to full transformed size
+            if self.original_pixmap:
+                transformed_width, transformed_height = self._get_transformed_size()
+                self.crop_rect = QRect(0, 0, transformed_width, transformed_height)
+
         self.update_display()
 
     def update_display(self):
@@ -86,8 +105,14 @@ class InteractiveCropLabel(QLabel):
             working_pixmap = working_pixmap.transformed(transform, Qt.SmoothTransformation)
 
         # Calculate scale factor based on TRANSFORMED image size
+        # Make sure widget has a valid size (avoid division by zero)
         widget_size = self.size()
+        if widget_size.width() <= 0 or widget_size.height() <= 0:
+            widget_size = self.minimumSize()
+
         transformed_size = working_pixmap.size()
+        if transformed_size.width() <= 0 or transformed_size.height() <= 0:
+            return
 
         scale_w = widget_size.width() / transformed_size.width()
         scale_h = widget_size.height() / transformed_size.height()
@@ -96,9 +121,16 @@ class InteractiveCropLabel(QLabel):
         # Scale transformed image to display size
         display_size = transformed_size * self.display_scale
         display_pixmap = working_pixmap.scaled(
-            display_size,
+            int(display_size.width()),
+            int(display_size.height()),
             Qt.KeepAspectRatio,
             Qt.SmoothTransformation
+        )
+
+        # Calculate offset for centering (image might be smaller than widget)
+        self.display_offset = QPoint(
+            (widget_size.width() - display_pixmap.width()) // 2,
+            (widget_size.height() - display_pixmap.height()) // 2
         )
 
         # SECOND: Draw crop overlay on TRANSFORMED image
@@ -166,36 +198,58 @@ class InteractiveCropLabel(QLabel):
         painter.drawRect(rect.left() - h//2, rect.center().y() - h//2, h, h)  # L
         painter.drawRect(rect.right() - h//2, rect.center().y() - h//2, h, h)  # R
 
+    def _widget_pos_to_pixmap_pos(self, widget_pos: QPoint) -> QPoint:
+        """Convert widget coordinates to pixmap coordinates (accounting for centering offset)."""
+        # The pixmap is displayed centered in the widget via QLabel's alignment
+        # We need to account for this offset
+        pixmap = self.pixmap()
+        if not pixmap:
+            return widget_pos
+
+        # Calculate the actual position of the pixmap within the widget
+        widget_rect = self.rect()
+        pixmap_rect = pixmap.rect()
+
+        # Calculate offset based on alignment (we use Qt.AlignCenter)
+        offset_x = (widget_rect.width() - pixmap_rect.width()) // 2
+        offset_y = (widget_rect.height() - pixmap_rect.height()) // 2
+
+        # Subtract offset to get position relative to pixmap
+        return QPoint(widget_pos.x() - offset_x, widget_pos.y() - offset_y)
+
     def _get_handle_at_pos(self, pos: QPoint) -> Optional[str]:
         """Get which resize handle is at the given position."""
         if not self.original_pixmap:
             return None
 
+        # Convert widget position to pixmap position
+        pixmap_pos = self._widget_pos_to_pixmap_pos(pos)
+
         scaled_crop = self._scale_rect_to_display(self.crop_rect)
         h = self.handle_size
 
         # Check corner handles
-        if QRect(scaled_crop.left() - h, scaled_crop.top() - h, h*2, h*2).contains(pos):
+        if QRect(scaled_crop.left() - h, scaled_crop.top() - h, h*2, h*2).contains(pixmap_pos):
             return 'tl'
-        if QRect(scaled_crop.right() - h, scaled_crop.top() - h, h*2, h*2).contains(pos):
+        if QRect(scaled_crop.right() - h, scaled_crop.top() - h, h*2, h*2).contains(pixmap_pos):
             return 'tr'
-        if QRect(scaled_crop.left() - h, scaled_crop.bottom() - h, h*2, h*2).contains(pos):
+        if QRect(scaled_crop.left() - h, scaled_crop.bottom() - h, h*2, h*2).contains(pixmap_pos):
             return 'bl'
-        if QRect(scaled_crop.right() - h, scaled_crop.bottom() - h, h*2, h*2).contains(pos):
+        if QRect(scaled_crop.right() - h, scaled_crop.bottom() - h, h*2, h*2).contains(pixmap_pos):
             return 'br'
 
         # Check edge handles
-        if QRect(scaled_crop.center().x() - h, scaled_crop.top() - h, h*2, h*2).contains(pos):
+        if QRect(scaled_crop.center().x() - h, scaled_crop.top() - h, h*2, h*2).contains(pixmap_pos):
             return 't'
-        if QRect(scaled_crop.center().x() - h, scaled_crop.bottom() - h, h*2, h*2).contains(pos):
+        if QRect(scaled_crop.center().x() - h, scaled_crop.bottom() - h, h*2, h*2).contains(pixmap_pos):
             return 'b'
-        if QRect(scaled_crop.left() - h, scaled_crop.center().y() - h, h*2, h*2).contains(pos):
+        if QRect(scaled_crop.left() - h, scaled_crop.center().y() - h, h*2, h*2).contains(pixmap_pos):
             return 'l'
-        if QRect(scaled_crop.right() - h, scaled_crop.center().y() - h, h*2, h*2).contains(pos):
+        if QRect(scaled_crop.right() - h, scaled_crop.center().y() - h, h*2, h*2).contains(pixmap_pos):
             return 'r'
 
         # Check if inside crop rect (for dragging)
-        if scaled_crop.contains(pos):
+        if scaled_crop.contains(pixmap_pos):
             return 'move'
 
         return None
@@ -243,8 +297,13 @@ class InteractiveCropLabel(QLabel):
 
         if self.is_dragging:
             # Move crop rectangle
-            delta = event.pos() - self.drag_start_pos
-            delta_original = self._scale_point_to_original(delta) - self._scale_point_to_original(QPoint(0, 0))
+            # Convert both positions to pixmap space
+            current_pixmap_pos = self._widget_pos_to_pixmap_pos(event.pos())
+            start_pixmap_pos = self._widget_pos_to_pixmap_pos(self.drag_start_pos)
+            delta_display = current_pixmap_pos - start_pixmap_pos
+
+            # Convert delta to original coordinates
+            delta_original = self._scale_point_to_original(delta_display) - self._scale_point_to_original(QPoint(0, 0))
 
             new_rect = QRect(self.drag_start_rect)
             new_rect.translate(delta_original)
@@ -271,8 +330,13 @@ class InteractiveCropLabel(QLabel):
 
         elif self.is_resizing:
             # Resize crop rectangle
-            delta = event.pos() - self.drag_start_pos
-            delta_original = self._scale_point_to_original(delta) - self._scale_point_to_original(QPoint(0, 0))
+            # Convert both positions to pixmap space
+            current_pixmap_pos = self._widget_pos_to_pixmap_pos(event.pos())
+            start_pixmap_pos = self._widget_pos_to_pixmap_pos(self.drag_start_pos)
+            delta_display = current_pixmap_pos - start_pixmap_pos
+
+            # Convert delta to original coordinates
+            delta_original = self._scale_point_to_original(delta_display) - self._scale_point_to_original(QPoint(0, 0))
 
             new_rect = QRect(self.drag_start_rect)
 
