@@ -33,6 +33,11 @@ class InteractiveCropLabel(QLabel):
         self.flip_horizontal = False
         self.flip_vertical = False
 
+        # Aspect ratio constraint
+        self.aspect_ratio_locked = False
+        self.aspect_ratio_w = 16
+        self.aspect_ratio_h = 9
+
         # Handle size for resize corners/edges
         self.handle_size = 10
 
@@ -104,6 +109,12 @@ class InteractiveCropLabel(QLabel):
                     self.crop_rect = QRect(x, y, w, h)
 
         self.update_display()
+
+    def set_aspect_ratio(self, locked: bool, ratio_w: int, ratio_h: int):
+        """Set aspect ratio constraint."""
+        self.aspect_ratio_locked = locked
+        self.aspect_ratio_w = ratio_w
+        self.aspect_ratio_h = ratio_h
 
     def update_display(self):
         """Update the displayed image with crop overlay."""
@@ -281,6 +292,109 @@ class InteractiveCropLabel(QLabel):
 
         return None
 
+    def _resize_with_aspect_ratio(self, rect: QRect, delta: QPoint, handle: str) -> QRect:
+        """
+        Resize rectangle while maintaining aspect ratio.
+
+        Args:
+            rect: Starting rectangle
+            delta: Mouse movement delta
+            handle: Resize handle identifier
+
+        Returns:
+            New rectangle with aspect ratio maintained
+
+        Strategy:
+            - Corner handles: Resize both dimensions proportionally
+            - Edge handles: Only allow movement on appropriate dimension,
+                           adjust other dimension to maintain ratio
+        """
+        from ...utils.aspect_ratio import (
+            calculate_height_from_width,
+            calculate_width_from_height
+        )
+
+        new_rect = QRect(rect)
+
+        # Determine which dimension to use as "primary" based on handle
+        if handle in ['tl', 'br']:
+            # Top-left or bottom-right: Use diagonal, width determines height
+            if handle == 'tl':
+                new_rect.setLeft(rect.left() + delta.x())
+                new_rect.setTop(rect.top() + delta.y())
+            else:  # br
+                new_rect.setRight(rect.right() + delta.x())
+                new_rect.setBottom(rect.bottom() + delta.y())
+
+            # Recalculate height based on width
+            width = new_rect.width()
+            height = calculate_height_from_width(
+                width, self.aspect_ratio_w, self.aspect_ratio_h
+            )
+
+            # Adjust based on which corner
+            if handle == 'tl':
+                new_rect.setTop(new_rect.bottom() - height)
+            else:
+                new_rect.setHeight(height)
+
+        elif handle in ['tr', 'bl']:
+            # Top-right or bottom-left: Use diagonal, width determines height
+            if handle == 'tr':
+                new_rect.setRight(rect.right() + delta.x())
+                new_rect.setTop(rect.top() + delta.y())
+            else:  # bl
+                new_rect.setLeft(rect.left() + delta.x())
+                new_rect.setBottom(rect.bottom() + delta.y())
+
+            # Recalculate height based on width
+            width = new_rect.width()
+            height = calculate_height_from_width(
+                width, self.aspect_ratio_w, self.aspect_ratio_h
+            )
+
+            # Adjust based on which corner
+            if handle == 'tr':
+                new_rect.setTop(new_rect.bottom() - height)
+            else:
+                new_rect.setHeight(height)
+
+        elif handle in ['l', 'r']:
+            # Left or right edge: Adjust width, recalculate height
+            if handle == 'l':
+                new_rect.setLeft(rect.left() + delta.x())
+            else:
+                new_rect.setRight(rect.right() + delta.x())
+
+            width = new_rect.width()
+            height = calculate_height_from_width(
+                width, self.aspect_ratio_w, self.aspect_ratio_h
+            )
+
+            # Center the height adjustment
+            center_y = new_rect.center().y()
+            new_rect.setHeight(height)
+            new_rect.moveCenter(QPoint(new_rect.center().x(), center_y))
+
+        elif handle in ['t', 'b']:
+            # Top or bottom edge: Adjust height, recalculate width
+            if handle == 't':
+                new_rect.setTop(rect.top() + delta.y())
+            else:
+                new_rect.setBottom(rect.bottom() + delta.y())
+
+            height = new_rect.height()
+            width = calculate_width_from_height(
+                height, self.aspect_ratio_w, self.aspect_ratio_h
+            )
+
+            # Center the width adjustment
+            center_x = new_rect.center().x()
+            new_rect.setWidth(width)
+            new_rect.moveCenter(QPoint(center_x, new_rect.center().y()))
+
+        return new_rect
+
     def _round_to_even(self, value: int) -> int:
         """Round value to nearest even number."""
         return (value // 2) * 2
@@ -388,19 +502,26 @@ class InteractiveCropLabel(QLabel):
 
             new_rect = QRect(self.drag_start_rect)
 
-            # Apply resize based on handle
-            # Left edge
-            if self.resize_handle in ['l', 'tl', 'bl']:
-                new_rect.setLeft(self.drag_start_rect.left() + delta_original.x())
-            # Right edge
-            if self.resize_handle in ['r', 'tr', 'br']:
-                new_rect.setRight(self.drag_start_rect.right() + delta_original.x())
-            # Top edge
-            if self.resize_handle in ['t', 'tl', 'tr']:
-                new_rect.setTop(self.drag_start_rect.top() + delta_original.y())
-            # Bottom edge
-            if self.resize_handle in ['b', 'bl', 'br']:
-                new_rect.setBottom(self.drag_start_rect.bottom() + delta_original.y())
+            if self.aspect_ratio_locked:
+                # Aspect ratio constrained resize
+                new_rect = self._resize_with_aspect_ratio(
+                    new_rect, delta_original, self.resize_handle
+                )
+            else:
+                # Free resize (current behavior)
+                # Apply resize based on handle
+                # Left edge
+                if self.resize_handle in ['l', 'tl', 'bl']:
+                    new_rect.setLeft(self.drag_start_rect.left() + delta_original.x())
+                # Right edge
+                if self.resize_handle in ['r', 'tr', 'br']:
+                    new_rect.setRight(self.drag_start_rect.right() + delta_original.x())
+                # Top edge
+                if self.resize_handle in ['t', 'tl', 'tr']:
+                    new_rect.setTop(self.drag_start_rect.top() + delta_original.y())
+                # Bottom edge
+                if self.resize_handle in ['b', 'bl', 'br']:
+                    new_rect.setBottom(self.drag_start_rect.bottom() + delta_original.y())
 
             # Constrain to transformed image bounds
             transformed_width, transformed_height = self._get_transformed_size()

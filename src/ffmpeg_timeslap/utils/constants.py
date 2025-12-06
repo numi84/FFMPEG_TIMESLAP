@@ -108,6 +108,28 @@ ROTATE_ANGLES: List[Tuple[int, str]] = [
 
 DEFAULT_ROTATE_ANGLE = 0
 
+# Aspect Ratios
+ASPECT_RATIOS: List[str] = [
+    "Default",   # Locked (no manual activation) - will auto-detect from image
+    "Free",      # No constraint
+    "16:9",      # Standard video landscape
+    "9:16",      # Standard video portrait
+    "4:3",       # Classic TV landscape
+    "3:4",       # Classic TV portrait
+    "3:2",       # DSLR landscape
+    "2:3",       # DSLR portrait
+    "1:1",       # Square (Instagram)
+    "21:9",      # Ultrawide landscape
+    "9:21",      # Ultrawide portrait
+    "18:9",      # Modern mobile
+    "5:4",       # Medium format
+    "2.39:1",    # Cinemascope
+    "2:1",       # Univisium
+    "Custom",    # User-defined
+]
+
+DEFAULT_ASPECT_RATIO = "Default"
+
 # Supported Image Formats
 SUPPORTED_IMAGE_FORMATS: List[str] = [
     ".jpg",

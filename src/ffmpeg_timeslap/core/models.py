@@ -73,6 +73,13 @@ class EncodingConfig:
     crop_w: int = 0
     crop_h: int = 0
 
+    # Aspect ratio settings for crop
+    aspect_ratio_locked: bool = False
+    aspect_ratio_mode: str = "free"  # "free", "preset", "custom", "auto"
+    aspect_ratio_preset: str = "16:9"
+    aspect_ratio_custom_w: int = 16
+    aspect_ratio_custom_h: int = 9
+
     rotate_enabled: bool = False
     rotate_angle: float = 0.0  # Any angle in degrees (0-359)
 

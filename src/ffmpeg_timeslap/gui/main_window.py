@@ -523,6 +523,20 @@ class MainWindow(QMainWindow):
         self.config.crop_w = self.filter_settings.get_crop_width()
         self.config.crop_h = self.filter_settings.get_crop_height()
 
+        # Aspect ratio settings
+        self.config.aspect_ratio_locked = self.filter_settings.is_aspect_ratio_locked()
+        self.config.aspect_ratio_preset = self.filter_settings.get_aspect_ratio_preset()
+        self.config.aspect_ratio_custom_w = self.filter_settings.get_aspect_ratio_custom_w()
+        self.config.aspect_ratio_custom_h = self.filter_settings.get_aspect_ratio_custom_h()
+        # Determine mode based on preset
+        preset = self.config.aspect_ratio_preset
+        if preset == "Free":
+            self.config.aspect_ratio_mode = "free"
+        elif preset == "Custom":
+            self.config.aspect_ratio_mode = "custom"
+        else:
+            self.config.aspect_ratio_mode = "preset"
+
         self.config.rotate_enabled = self.filter_settings.is_rotate_enabled()
         self.config.rotate_angle = self.filter_settings.get_rotate_angle()
 
@@ -558,6 +572,14 @@ class MainWindow(QMainWindow):
         self.filter_settings.set_crop_values(
             self.config.crop_x, self.config.crop_y,
             self.config.crop_w, self.config.crop_h
+        )
+
+        # Aspect ratio settings
+        self.filter_settings.set_aspect_ratio_locked(self.config.aspect_ratio_locked)
+        self.filter_settings.set_aspect_ratio_preset(self.config.aspect_ratio_preset)
+        self.filter_settings.set_aspect_ratio_custom(
+            self.config.aspect_ratio_custom_w,
+            self.config.aspect_ratio_custom_h
         )
 
         self.filter_settings.set_rotate_enabled(self.config.rotate_enabled)
