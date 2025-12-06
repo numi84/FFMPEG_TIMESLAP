@@ -1,6 +1,6 @@
 """Widget for displaying image sequence information."""
 
-from PyQt5.QtWidgets import QGroupBox, QFormLayout, QLabel
+from PyQt5.QtWidgets import QGroupBox, QFormLayout, QLabel, QSizePolicy
 from PyQt5.QtCore import Qt
 from typing import Optional
 
@@ -21,7 +21,11 @@ class SequenceInfoWidget(QGroupBox):
     def setup_ui(self):
         """Setup user interface."""
         layout = QFormLayout()
+        layout.setSpacing(4)
+        layout.setContentsMargins(8, 4, 8, 4)
         self.setLayout(layout)
+        self.setMaximumHeight(200)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
 
         # Pattern
         self.pattern_label = QLabel("-")

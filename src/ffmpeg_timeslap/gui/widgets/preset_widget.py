@@ -1,7 +1,7 @@
 """Widget for preset selection and management."""
 
 from PyQt5.QtWidgets import (
-    QGroupBox, QHBoxLayout, QLabel, QComboBox, QPushButton, QMessageBox
+    QGroupBox, QHBoxLayout, QLabel, QComboBox, QPushButton, QMessageBox, QSizePolicy
 )
 from PyQt5.QtCore import pyqtSignal
 
@@ -32,7 +32,11 @@ class PresetWidget(QGroupBox):
     def setup_ui(self):
         """Setup user interface."""
         layout = QHBoxLayout()
+        layout.setSpacing(4)
+        layout.setContentsMargins(8, 4, 8, 4)
         self.setLayout(layout)
+        self.setMaximumHeight(80)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
 
         # Label
         layout.addWidget(QLabel("Preset:"))

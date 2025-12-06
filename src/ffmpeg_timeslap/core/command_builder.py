@@ -228,7 +228,7 @@ class FFmpegCommandBuilder:
             # Use rotate filter for arbitrary angles
             # Convert degrees to radians (PI/180)
             # Fill transparent areas with black
-            return f"rotate={angle}*PI/180:c=black:ow='iw':oh='ih'"
+            return f"rotate={angle}*PI/180:c=black:ow=iw:oh=ih"
 
     def _build_flip_filters(self) -> List[str]:
         """

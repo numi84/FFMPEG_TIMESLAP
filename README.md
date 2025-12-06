@@ -2,7 +2,7 @@
 
 Eine benutzerfreundliche Python-Desktop-Anwendung zur Erstellung von Timelapse-Videos aus Bildsequenzen mit FFMPEG.
 
-![Version](https://img.shields.io/badge/version-0.1.0-blue)
+![Version](https://img.shields.io/badge/version-0.2.0-blue)
 ![Python](https://img.shields.io/badge/python-3.8+-green)
 ![License](https://img.shields.io/badge/license-MIT-orange)
 
@@ -11,6 +11,10 @@ Eine benutzerfreundliche Python-Desktop-Anwendung zur Erstellung von Timelapse-V
 - **Automatische Bildsequenz-Erkennung** mit verschiedenen Namensmustern
 - **Vorgefertigte Presets** für YouTube, Instagram, Twitter, Archivierung
 - **Umfangreiche FFMPEG-Einstellungen** (Codec, Qualität, Filter, etc.)
+- **Interaktive Crop-Auswahl** mit Maus, inkl. Rotation und Flip
+- **Optimiertes Layout** mit großer, permanenter Vorschau
+- **Direkte Eingabefelder** für Rotationswinkel und Bildnummer
+- **Debounced Updates** für flüssige Bedienung
 - **Live-Fortschrittsanzeige** während des Encodings
 - **Portable** - kann mit FFMPEG-Binary ausgeliefert werden
 - **Benutzerfreundliche GUI** mit PyQt5
@@ -18,6 +22,34 @@ Eine benutzerfreundliche Python-Desktop-Anwendung zur Erstellung von Timelapse-V
 ## Screenshots
 
 *(Screenshots folgen)*
+
+## Changelog
+
+### v0.2.0 (2025-12-06) - GUI Layout Optimization
+
+**Neue Features:**
+- 🎨 Komplett überarbeitetes GUI-Layout
+- 📺 Große, permanente Vorschau (immer sichtbar, nicht mehr im Tab versteckt)
+- 🔢 Direkte Eingabefelder für Rotationswinkel (0.0-359.9°) und Bildnummer
+- ⚡ Debounced Updates (200ms) für flüssigere Bedienung
+- 💾 Crop-Einstellungen bleiben bei Rotation/Flip erhalten
+- 🔄 Filter-Transformationen bleiben beim Navigieren zwischen Bildern erhalten
+
+**Verbesserungen:**
+- Oberer Bereich (Presets, Input/Output, Sequenz-Info) kompaktiert
+- Fensterbreite auf 1200px erweitert für bessere Nutzung von Breitbildschirmen
+- Preview-Widget von 400×300px auf 600×450px Minimum vergrößert
+- Optimierte Speicherverwaltung durch intelligente Layout-Updates
+
+**Technische Details:**
+- Alle 6 Widget-Dateien aktualisiert (main_window, interactive_crop, filter_settings, preset, input_output, sequence_info)
+- QTimer-basiertes Debouncing für Rotation und Bildnavigation
+- Verbesserte Signal-Verbindungen zwischen Widgets
+- Crop-Persistenz mit automatischer Anpassung bei Transformationen
+
+### v0.1.0 (2025-12-02) - Initial Release
+
+Erste funktionsfähige Version mit allen Kernfunktionen.
 
 ## Voraussetzungen
 
@@ -35,10 +67,11 @@ cd FFMPEG_Timeslap
 
 # Virtuelle Umgebung erstellen (empfohlen)
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+source venv/bin/activate  # Linux: venv\Scripts\activate
+.\venv\Scripts\Activate.ps1 #Windows
 
 # Dependencies installieren
-pip install -e .
+pip install -r requirements.txt
 ```
 
 ### Option 2: Portable Version

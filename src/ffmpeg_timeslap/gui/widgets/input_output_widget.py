@@ -1,7 +1,7 @@
 """Widget for input/output folder selection."""
 
 from PyQt5.QtWidgets import (
-    QGroupBox, QGridLayout, QLabel, QLineEdit, QPushButton, QFileDialog
+    QGroupBox, QGridLayout, QLabel, QLineEdit, QPushButton, QFileDialog, QSizePolicy
 )
 from PyQt5.QtCore import pyqtSignal
 from pathlib import Path
@@ -24,7 +24,11 @@ class InputOutputWidget(QGroupBox):
     def setup_ui(self):
         """Setup user interface."""
         layout = QGridLayout()
+        layout.setSpacing(4)
+        layout.setContentsMargins(8, 4, 8, 4)
         self.setLayout(layout)
+        self.setMaximumHeight(120)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
 
         # Input folder
         layout.addWidget(QLabel("Input Ordner:"), 0, 0)

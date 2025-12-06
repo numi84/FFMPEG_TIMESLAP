@@ -383,6 +383,95 @@ FFMPEG is licensed under GPL/LGPL - See `ffmpeg_binaries/LICENSE.txt`
 
 ---
 
+## Recent Updates (v0.2.0 - 2025-12-06)
+
+### GUI Layout Optimization
+Complete restructuring of the main window layout for better space utilization:
+
+**New Layout Structure:**
+```
+┌────────────────────────────────────────────────────────┐
+│ [Presets + Input/Output]  │  [Sequenz-Info]          │  Compact (200px)
+├───────────────────────────┴──────────────────────────────┤
+│                           │                            │
+│  [Tabs: Basis │          │      Preview               │
+│   Erweitert │ Filter]     │      (LARGE & PERMANENT)   │  Stretchable
+│  - Deflicker              │                            │
+│  - Crop                   │                            │
+│  - Rotate                 │                            │
+│  - Flip                   │                            │
+├───────────────────────────┴────────────────────────────┤
+│ [Encoding Progress & Controls]                         │  Fixed
+└────────────────────────────────────────────────────────┘
+```
+
+**Key Improvements:**
+1. **Optimized Preview Display:**
+   - Preview widget now always visible (not hidden in Filter tab)
+   - Larger preview area (60% of middle row width)
+   - Minimum size increased to 600×450px
+   - Proper size hints prevent post-load resizing
+   - Forced geometry updates for consistent sizing
+
+2. **Compacted Top Section:**
+   - Preset widget: max height 80px with compact spacing
+   - Input/Output widget: max height 120px
+   - Sequenz-Info widget: max height 200px, positioned next to Presets/Input
+   - Horizontal layout (2:1 ratio) instead of vertical stacking
+
+3. **Enhanced Filter Controls:**
+   - **Direct Input Fields:**
+     - Rotation angle: SpinBox for precise angle input (0.0-359.9°)
+     - Image navigation: SpinBox for direct image number entry
+   - **Debounced Updates:**
+     - 200ms delay on rotation angle changes (prevents lag during input)
+     - 200ms delay on image navigation (prevents loading every frame when sliding)
+   - **Preserved Crop Settings:**
+     - Crop area maintained when changing rotation/flip
+     - Crop adjusted intelligently if doesn't fit after transformation
+   - **Filter Persistence:**
+     - Transformations (rotate/flip) preserved when navigating images
+     - Crop settings maintained across image sequence
+
+4. **Window Sizing:**
+   - Minimum window width increased from 950px to 1200px
+   - Better utilization of widescreen displays
+   - Responsive layout with proper stretch factors
+
+### Technical Implementation Details
+
+**Modified Files:**
+- `main_window.py`: Complete layout restructure (lines 76-160)
+- `interactive_crop_widget.py`: Size optimization and debouncing (lines 41-47, 460-463, 636-638)
+- `filter_settings_widget.py`: Preview removal and input enhancements (lines 25-38, 150-158, 205-233)
+- `preset_widget.py`: Compact layout (lines 34-39)
+- `input_output_widget.py`: Compact layout (lines 26-31)
+- `sequence_info_widget.py`: Compact layout (lines 23-28)
+
+**Signal Flow:**
+```
+User changes filter settings (FilterSettingsWidget)
+    ↓
+Debounce timer (200ms)
+    ↓
+update_preview() called
+    ↓
+Preview widget updated (InteractiveCropWidget)
+    ↓
+Transforms applied to crop label
+    ↓
+User sees result
+```
+
+**Performance Optimizations:**
+- Debouncing prevents unnecessary image transformations
+- Layout geometry updates forced at strategic points
+- Preview widget uses proper size policies and hints
+- Crop preservation reduces recalculation overhead
+
+### Breaking Changes
+None - all existing functionality preserved, only UI organization changed.
+
 **Author:** Christian Neumayer (numi@nech.at)
-**Version:** 0.1.0
-**Last Updated:** 2025-12-02
+**Version:** 0.2.0
+**Last Updated:** 2025-12-06

@@ -1,7 +1,7 @@
 """Interactive crop widget with mouse selection."""
 
-from PyQt5.QtWidgets import QWidget, QLabel, QVBoxLayout, QHBoxLayout, QPushButton, QSlider
-from PyQt5.QtCore import Qt, QRect, QPoint, pyqtSignal
+from PyQt5.QtWidgets import QWidget, QLabel, QVBoxLayout, QHBoxLayout, QPushButton, QSlider, QSpinBox, QSizePolicy
+from PyQt5.QtCore import Qt, QRect, QPoint, pyqtSignal, QTimer, QSize
 from PyQt5.QtGui import QPixmap, QPainter, QPen, QColor, QBrush, QCursor, QMouseEvent
 from pathlib import Path
 from typing import Optional
@@ -38,8 +38,13 @@ class InteractiveCropLabel(QLabel):
 
         self.setMouseTracking(True)
         self.setAlignment(Qt.AlignCenter)
-        self.setMinimumSize(400, 300)
+        self.setMinimumSize(600, 450)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setStyleSheet("border: 1px solid #ccc; background: #222;")
+
+    def sizeHint(self):
+        """Provide proper size hint for layout."""
+        return QSize(800, 600)
 
     def set_image(self, pixmap: QPixmap):
         """Set the image to display."""
@@ -48,8 +53,10 @@ class InteractiveCropLabel(QLabel):
         self.rotate_angle = 0.0
         self.flip_horizontal = False
         self.flip_vertical = False
-        # Set crop to full image
-        self.crop_rect = QRect(0, 0, pixmap.width(), pixmap.height())
+        # Set crop to full image (ensure even dimensions for FFMPEG)
+        width = self._round_to_even(pixmap.width())
+        height = self._round_to_even(pixmap.height())
+        self.crop_rect = QRect(0, 0, width, height)
         # Force widget to calculate proper size before first display
         self.updateGeometry()
         self.update_display()
@@ -57,6 +64,11 @@ class InteractiveCropLabel(QLabel):
     def set_crop_rect(self, x: int, y: int, w: int, h: int):
         """Set crop rectangle from external source."""
         if self.original_pixmap:
+            # Ensure even values for FFMPEG compatibility
+            x = self._round_to_even(x)
+            y = self._round_to_even(y)
+            w = self._round_to_even(w)
+            h = self._round_to_even(h)
             self.crop_rect = QRect(x, y, w, h)
             self.update_display()
 
@@ -65,16 +77,31 @@ class InteractiveCropLabel(QLabel):
         old_transforms = (self.rotate_angle, self.flip_horizontal, self.flip_vertical)
         new_transforms = (rotate, flip_h, flip_v)
 
-        # If transforms changed, reset crop to full transformed image
+        # If transforms changed, update them but preserve crop if possible
         if old_transforms != new_transforms:
             self.rotate_angle = rotate
             self.flip_horizontal = flip_h
             self.flip_vertical = flip_v
 
-            # Reset crop to full transformed size
+            # Validate and adjust crop to fit within new transformed bounds
             if self.original_pixmap:
                 transformed_width, transformed_height = self._get_transformed_size()
-                self.crop_rect = QRect(0, 0, transformed_width, transformed_height)
+
+                # Constrain existing crop to new bounds
+                if self.crop_rect.right() > transformed_width or self.crop_rect.bottom() > transformed_height:
+                    # Crop doesn't fit, adjust it
+                    x = min(self.crop_rect.x(), max(0, transformed_width - 32))
+                    y = min(self.crop_rect.y(), max(0, transformed_height - 32))
+                    w = min(self.crop_rect.width(), transformed_width - x)
+                    h = min(self.crop_rect.height(), transformed_height - y)
+
+                    # Ensure minimum size and even values
+                    w = max(32, self._round_to_even(w))
+                    h = max(32, self._round_to_even(h))
+                    x = self._round_to_even(x)
+                    y = self._round_to_even(y)
+
+                    self.crop_rect = QRect(x, y, w, h)
 
         self.update_display()
 
@@ -338,9 +365,11 @@ class InteractiveCropLabel(QLabel):
             if new_rect.bottom() > transformed_height:
                 new_rect.moveBottom(transformed_height)
 
-            # Round to even pixels
+            # Round to even pixels (all values to ensure FFMPEG compatibility)
             new_rect.setX(self._round_to_even(new_rect.x()))
             new_rect.setY(self._round_to_even(new_rect.y()))
+            new_rect.setWidth(self._round_to_even(new_rect.width()))
+            new_rect.setHeight(self._round_to_even(new_rect.height()))
 
             self.crop_rect = new_rect
             self.update_display()
@@ -444,6 +473,13 @@ class InteractiveCropWidget(QWidget):
         super().__init__(parent)
         self.image_files = []  # List of all image files in sequence
         self.current_image_index = 0
+        self.pending_image_index = 0  # Index to load after debounce
+
+        # Debounce timer for image loading
+        self.image_load_timer = QTimer()
+        self.image_load_timer.setSingleShot(True)
+        self.image_load_timer.timeout.connect(self._load_pending_image)
+
         self.setup_ui()
 
     def setup_ui(self):
@@ -465,9 +501,20 @@ class InteractiveCropWidget(QWidget):
         self.image_slider.valueChanged.connect(self.on_image_slider_changed)
         nav_layout.addWidget(self.image_slider, 1)
 
-        self.image_counter_label = QLabel("0 / 0")
-        self.image_counter_label.setMinimumWidth(80)
-        self.image_counter_label.setAlignment(Qt.AlignCenter)
+        # Direct image number input
+        self.image_spinbox = QSpinBox()
+        self.image_spinbox.setMinimum(1)
+        self.image_spinbox.setMaximum(1)
+        self.image_spinbox.setValue(1)
+        self.image_spinbox.setEnabled(False)
+        self.image_spinbox.setPrefix("Nr. ")
+        self.image_spinbox.setMinimumWidth(80)
+        self.image_spinbox.valueChanged.connect(self.on_image_spinbox_changed)
+        nav_layout.addWidget(self.image_spinbox)
+
+        self.image_counter_label = QLabel("/ 0")
+        self.image_counter_label.setMinimumWidth(50)
+        self.image_counter_label.setAlignment(Qt.AlignLeft)
         nav_layout.addWidget(self.image_counter_label)
 
         layout.addLayout(nav_layout)
@@ -503,25 +550,61 @@ class InteractiveCropWidget(QWidget):
             self.image_slider.setMaximum(len(image_files) - 1)
             self.image_slider.setValue(0)
             self.image_slider.setEnabled(True)
+            self.image_spinbox.setMaximum(len(image_files))
+            self.image_spinbox.setValue(1)
+            self.image_spinbox.setEnabled(True)
             self.update_image_counter()
             self.load_image(image_files[0])
         else:
             self.image_slider.setEnabled(False)
-            self.image_counter_label.setText("0 / 0")
+            self.image_spinbox.setEnabled(False)
+            self.image_counter_label.setText("/ 0")
 
     def on_image_slider_changed(self, value: int):
         """Handle image slider value change."""
         if 0 <= value < len(self.image_files):
-            self.current_image_index = value
-            self.update_image_counter()
-            self.load_image(self.image_files[value])
+            # Update spinbox without triggering its signal
+            self.image_spinbox.blockSignals(True)
+            self.image_spinbox.setValue(value + 1)
+            self.image_spinbox.blockSignals(False)
+            self.update_image_counter_display(value)
+
+            # Debounce: wait 200ms before loading image
+            self.pending_image_index = value
+            self.image_load_timer.stop()
+            self.image_load_timer.start(200)
+
+    def on_image_spinbox_changed(self, value: int):
+        """Handle image spinbox value change (1-based)."""
+        # Convert 1-based to 0-based index
+        index = value - 1
+        if 0 <= index < len(self.image_files):
+            # Update slider without triggering its signal
+            self.image_slider.blockSignals(True)
+            self.image_slider.setValue(index)
+            self.image_slider.blockSignals(False)
+            self.update_image_counter_display(index)
+
+            # Debounce: wait 200ms before loading image
+            self.pending_image_index = index
+            self.image_load_timer.stop()
+            self.image_load_timer.start(200)
+
+    def _load_pending_image(self):
+        """Load the pending image after debounce delay."""
+        if 0 <= self.pending_image_index < len(self.image_files):
+            self.current_image_index = self.pending_image_index
+            self.load_image(self.image_files[self.pending_image_index])
 
     def update_image_counter(self):
         """Update the image counter label."""
         if self.image_files:
-            self.image_counter_label.setText(
-                f"{self.current_image_index + 1} / {len(self.image_files)}"
-            )
+            self.image_counter_label.setText(f"/ {len(self.image_files)}")
+
+    def update_image_counter_display(self, index: int):
+        """Update image counter display without loading image."""
+        # Just update the display, actual image loading is debounced
+        pass  # Counter is now part of spinbox, no separate update needed
 
     def load_image(self, image_path: Path):
         """Load an image for crop selection."""
@@ -535,22 +618,60 @@ class InteractiveCropWidget(QWidget):
             self.info_label.setText("Fehler beim Laden des Bildes")
             return
 
-        # Save current crop settings before loading new image
+        # Save current crop settings and transformations before loading new image
         saved_crop = None
+        saved_transforms = None
         if self.crop_label.original_pixmap:
             saved_crop = QRect(self.crop_label.crop_rect)
+            saved_transforms = (
+                self.crop_label.rotate_angle,
+                self.crop_label.flip_horizontal,
+                self.crop_label.flip_vertical
+            )
 
         self.crop_label.set_image(pixmap)
 
+        # Restore transformations BEFORE restoring crop (transforms affect dimensions)
+        if saved_transforms is not None:
+            rotate, flip_h, flip_v = saved_transforms
+            # Manually set transforms without resetting crop
+            self.crop_label.rotate_angle = rotate
+            self.crop_label.flip_horizontal = flip_h
+            self.crop_label.flip_vertical = flip_v
+
         # Restore crop settings if they exist and are valid for new image
         if saved_crop is not None:
-            # Check if saved crop fits within new image dimensions
-            if (saved_crop.right() <= pixmap.width() and
-                saved_crop.bottom() <= pixmap.height()):
+            # Get transformed dimensions to check bounds
+            transformed_width, transformed_height = self.crop_label._get_transformed_size()
+
+            # Check if saved crop fits within transformed image dimensions
+            if (saved_crop.right() <= transformed_width and
+                saved_crop.bottom() <= transformed_height):
                 self.crop_label.set_crop_rect(
                     saved_crop.x(), saved_crop.y(),
                     saved_crop.width(), saved_crop.height()
                 )
+            else:
+                # Adjust crop to fit within new bounds
+                x = min(saved_crop.x(), max(0, transformed_width - 32))
+                y = min(saved_crop.y(), max(0, transformed_height - 32))
+                w = min(saved_crop.width(), transformed_width - x)
+                h = min(saved_crop.height(), transformed_height - y)
+
+                # Ensure even values
+                w = max(32, self.crop_label._round_to_even(w))
+                h = max(32, self.crop_label._round_to_even(h))
+                x = self.crop_label._round_to_even(x)
+                y = self.crop_label._round_to_even(y)
+
+                self.crop_label.set_crop_rect(x, y, w, h)
+
+        # Update display with current transforms
+        self.crop_label.update_display()
+
+        # Force layout recalculation to prevent resize after load
+        self.updateGeometry()
+        self.crop_label.updateGeometry()
 
         # Show current image info
         info_text = f"Bild: {pixmap.width()}x{pixmap.height()}"
@@ -571,8 +692,11 @@ class InteractiveCropWidget(QWidget):
         """Reset crop to full image."""
         if self.crop_label.original_pixmap:
             pixmap = self.crop_label.original_pixmap
-            self.crop_label.set_crop_rect(0, 0, pixmap.width(), pixmap.height())
-            self.crop_changed.emit(0, 0, pixmap.width(), pixmap.height())
+            # Ensure even dimensions for FFMPEG compatibility
+            width = self.crop_label._round_to_even(pixmap.width())
+            height = self.crop_label._round_to_even(pixmap.height())
+            self.crop_label.set_crop_rect(0, 0, width, height)
+            self.crop_changed.emit(0, 0, width, height)
 
     def clear(self):
         """Clear the widget."""

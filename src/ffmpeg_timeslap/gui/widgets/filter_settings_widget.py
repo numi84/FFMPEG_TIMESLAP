@@ -2,15 +2,14 @@
 
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QCheckBox, QFormLayout,
-    QComboBox, QSlider, QLabel, QSpinBox, QPushButton
+    QComboBox, QSlider, QLabel, QSpinBox, QPushButton, QDoubleSpinBox
 )
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 
 from ...utils.constants import (
     DEFLICKER_MODES, ROTATE_ANGLES,
     DEFAULT_DEFLICKER_MODE, DEFAULT_DEFLICKER_SIZE, DEFAULT_ROTATE_ANGLE
 )
-from .interactive_crop_widget import InteractiveCropWidget
 
 
 class FilterSettingsWidget(QWidget):
@@ -23,25 +22,20 @@ class FilterSettingsWidget(QWidget):
         """Initialize widget."""
         super().__init__(parent)
         self.image_preview = None  # Will be set by main window
+        self.preview_widget = None  # Will be set by main window
+
+        # Debounce timers for smooth input
+        self.rotate_update_timer = QTimer()
+        self.rotate_update_timer.setSingleShot(True)
+        self.rotate_update_timer.timeout.connect(self._apply_rotation_update)
+
         self.setup_ui()
 
     def setup_ui(self):
         """Setup user interface."""
-        main_layout = QHBoxLayout()
-        self.setLayout(main_layout)
-
-        # Left side: Filter controls
-        left_widget = QWidget()
+        # Single column layout - preview is now in main window
         layout = QVBoxLayout()
-        left_widget.setLayout(layout)
-        main_layout.addWidget(left_widget, 1)
-
-        # Right side: Interactive crop preview
-        self.preview_widget = InteractiveCropWidget()
-        self.preview_widget.refresh_requested.connect(self.on_preview_refresh)
-        self.preview_widget.crop_changed.connect(self.on_crop_changed_from_preview)
-        self.preview_widget.image_changed.connect(self.on_preview_image_changed)
-        main_layout.addWidget(self.preview_widget, 1)
+        self.setLayout(layout)
 
         # Deflicker filter
         self.deflicker_group = QGroupBox("Deflicker")
@@ -136,7 +130,7 @@ class FilterSettingsWidget(QWidget):
         rotate_layout = QFormLayout()
         self.rotate_group.setLayout(rotate_layout)
 
-        # Rotate angle slider
+        # Rotate angle slider and input
         angle_layout = QHBoxLayout()
 
         self.rotate_slider = QSlider(Qt.Horizontal)
@@ -144,12 +138,18 @@ class FilterSettingsWidget(QWidget):
         self.rotate_slider.setValue(0)
         self.rotate_slider.setTickPosition(QSlider.TicksBelow)
         self.rotate_slider.setTickInterval(45)
-        self.rotate_slider.valueChanged.connect(self.on_rotate_angle_changed)
+        self.rotate_slider.valueChanged.connect(self.on_rotate_slider_changed)
         angle_layout.addWidget(self.rotate_slider, 1)
 
-        self.rotate_angle_label = QLabel("0°")
-        self.rotate_angle_label.setMinimumWidth(40)
-        angle_layout.addWidget(self.rotate_angle_label)
+        # Direct angle input
+        self.rotate_angle_spinbox = QDoubleSpinBox()
+        self.rotate_angle_spinbox.setRange(0.0, 359.99)
+        self.rotate_angle_spinbox.setDecimals(1)
+        self.rotate_angle_spinbox.setSuffix("°")
+        self.rotate_angle_spinbox.setValue(0.0)
+        self.rotate_angle_spinbox.setMinimumWidth(80)
+        self.rotate_angle_spinbox.valueChanged.connect(self.on_rotate_spinbox_changed)
+        angle_layout.addWidget(self.rotate_angle_spinbox)
 
         rotate_layout.addRow("Winkel:", angle_layout)
 
@@ -202,10 +202,30 @@ class FilterSettingsWidget(QWidget):
         self.deflicker_size_label.setText(str(value))
         self.settings_changed.emit()
 
-    def on_rotate_angle_changed(self, value: int):
-        """Handle rotate angle change."""
-        self.rotate_angle_label.setText(f"{value}°")
+    def on_rotate_slider_changed(self, value: int):
+        """Handle rotate slider change."""
+        # Update spinbox without triggering its signal
+        self.rotate_angle_spinbox.blockSignals(True)
+        self.rotate_angle_spinbox.setValue(float(value))
+        self.rotate_angle_spinbox.blockSignals(False)
 
+        # Debounce: wait 200ms before updating preview
+        self.rotate_update_timer.stop()
+        self.rotate_update_timer.start(200)
+
+    def on_rotate_spinbox_changed(self, value: float):
+        """Handle rotate spinbox change."""
+        # Update slider without triggering its signal
+        self.rotate_slider.blockSignals(True)
+        self.rotate_slider.setValue(int(value))
+        self.rotate_slider.blockSignals(False)
+
+        # Debounce: wait 200ms before updating preview
+        self.rotate_update_timer.stop()
+        self.rotate_update_timer.start(200)
+
+    def _apply_rotation_update(self):
+        """Apply rotation update after debounce delay."""
         # Update spinbox maximums based on transformed dimensions
         self.update_spinbox_maximums()
 
@@ -354,11 +374,6 @@ class FilterSettingsWidget(QWidget):
         self.update_preview()
         self.settings_changed.emit()
 
-    def on_preview_refresh(self):
-        """Handle preview refresh request."""
-        # Will be connected by main window to load first image from sequence
-        pass
-
     def on_preview_image_changed(self, image_path):
         """Handle image change from slider navigation."""
         from PIL import Image
@@ -410,6 +425,9 @@ class FilterSettingsWidget(QWidget):
 
     def update_preview(self):
         """Update preview with current filter settings."""
+        if not self.preview_widget:
+            return
+
         # Update crop settings in preview
         if self.is_crop_enabled():
             self.preview_widget.set_crop(
@@ -436,6 +454,9 @@ class FilterSettingsWidget(QWidget):
             image_path: Path to image file
             image_files: Optional list of all image files in sequence
         """
+        if not self.preview_widget:
+            return
+
         from pathlib import Path
         from PIL import Image
 
@@ -503,7 +524,7 @@ class FilterSettingsWidget(QWidget):
 
     def get_rotate_angle(self) -> float:
         """Get rotate angle."""
-        return float(self.rotate_slider.value())
+        return self.rotate_angle_spinbox.value()
 
     def is_flip_enabled(self) -> bool:
         """Check if flip is enabled."""
@@ -549,6 +570,7 @@ class FilterSettingsWidget(QWidget):
 
     def set_rotate_angle(self, angle: float):
         """Set rotate angle."""
+        self.rotate_angle_spinbox.setValue(angle)
         self.rotate_slider.setValue(int(angle))
 
     def set_flip_enabled(self, enabled: bool):

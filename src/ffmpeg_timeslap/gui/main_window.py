@@ -1,9 +1,10 @@
 """Main application window."""
 
 from PyQt5.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QTabWidget,
-    QAction, QStatusBar, QMessageBox, QFileDialog
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTabWidget,
+    QAction, QStatusBar, QMessageBox, QFileDialog, QSplitter
 )
+from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QThread, pyqtSignal, QObject
 from pathlib import Path
 import threading
@@ -24,6 +25,7 @@ from .widgets.basic_settings_widget import BasicSettingsWidget
 from .widgets.advanced_settings_widget import AdvancedSettingsWidget
 from .widgets.filter_settings_widget import FilterSettingsWidget
 from .widgets.encoding_widget import EncodingWidget
+from .widgets.interactive_crop_widget import InteractiveCropWidget
 
 from .dialogs.preview_dialog import PreviewDialog
 from .dialogs.save_preset_dialog import show_save_preset_dialog
@@ -76,7 +78,7 @@ class MainWindow(QMainWindow):
     def setup_ui(self):
         """Setup user interface."""
         self.setWindowTitle(f"{APP_NAME} v{APP_VERSION}")
-        self.setMinimumSize(950, 800)
+        self.setMinimumSize(1920, 1080)  # Full-HD minimum
 
         # Create menu bar
         self.create_menu_bar()
@@ -88,47 +90,78 @@ class MainWindow(QMainWindow):
         # Main layout
         main_layout = QVBoxLayout(central_widget)
 
-        # Preset widget
+        # ==== TOP ROW: Presets, Input/Output, Sequenz-Info ====
+        top_row = QHBoxLayout()
+
+        # Left side: Presets + Input/Output
+        left_top = QVBoxLayout()
+
         self.preset_widget = PresetWidget(self.preset_manager)
         self.preset_widget.preset_loaded.connect(self.on_preset_loaded)
         self.preset_widget.preset_saved.connect(self.on_save_preset)
-        main_layout.addWidget(self.preset_widget)
+        left_top.addWidget(self.preset_widget)
 
-        # Input/Output widget
         self.input_output_widget = InputOutputWidget()
         self.input_output_widget.input_folder_changed.connect(self.on_input_folder_changed)
         self.input_output_widget.output_folder_changed.connect(self.on_output_folder_changed)
         self.input_output_widget.output_filename_changed.connect(self.on_output_filename_changed)
-        main_layout.addWidget(self.input_output_widget)
+        left_top.addWidget(self.input_output_widget)
 
-        # Sequence info widget
+        # Right side: Sequenz-Info
+        right_top = QVBoxLayout()
         self.sequence_info_widget = SequenceInfoWidget()
-        main_layout.addWidget(self.sequence_info_widget)
+        right_top.addWidget(self.sequence_info_widget)
+        right_top.addStretch()  # Push to top
 
-        # Settings tabs
+        # Combine top left and right (2:1 ratio)
+        top_row.addLayout(left_top, 2)
+        top_row.addLayout(right_top, 1)
+
+        main_layout.addLayout(top_row)
+
+        # ==== MIDDLE ROW: Tabs + Preview ====
+        # Use QSplitter for resizable divider between tabs and preview
+        middle_splitter = QSplitter(Qt.Horizontal)
+
+        # Left: Settings tabs
         self.settings_tabs = QTabWidget()
-        main_layout.addWidget(self.settings_tabs)
 
-        # Basic settings tab
         self.basic_settings = BasicSettingsWidget()
         self.basic_settings.framerate_changed.connect(self.on_framerate_changed)
         self.settings_tabs.addTab(self.basic_settings, "Basis")
 
-        # Advanced settings tab
         self.advanced_settings = AdvancedSettingsWidget()
         self.settings_tabs.addTab(self.advanced_settings, "Erweitert")
 
-        # Filter settings tab
         self.filter_settings = FilterSettingsWidget()
-        self.filter_settings.preview_widget.refresh_requested.connect(self._load_preview_image)
         self.settings_tabs.addTab(self.filter_settings, "Filter")
 
-        # Encoding widget
+        middle_splitter.addWidget(self.settings_tabs)
+
+        # Right: Preview widget (always visible)
+        self.preview_widget = InteractiveCropWidget()
+        self.preview_widget.refresh_requested.connect(self._load_preview_image)
+        self.preview_widget.crop_changed.connect(self.on_crop_changed_from_preview)
+        self.preview_widget.image_changed.connect(self.filter_settings.on_preview_image_changed)
+        middle_splitter.addWidget(self.preview_widget)
+
+        # Set initial sizes: 35% for tabs, 65% for preview
+        # Calculate based on Full-HD width (1920px)
+        middle_splitter.setSizes([672, 1248])  # 35% and 65% of 1920px
+        middle_splitter.setStretchFactor(0, 35)
+        middle_splitter.setStretchFactor(1, 65)
+
+        main_layout.addWidget(middle_splitter, 1)  # Middle row stretches to fill
+
+        # ==== BOTTOM ROW: Encoding ====
         self.encoding_widget = EncodingWidget()
         self.encoding_widget.preview_requested.connect(self.on_preview_requested)
         self.encoding_widget.start_requested.connect(self.on_start_requested)
         self.encoding_widget.cancel_requested.connect(self.on_cancel_requested)
         main_layout.addWidget(self.encoding_widget)
+
+        # Connect preview widget to filter settings
+        self.filter_settings.preview_widget = self.preview_widget
 
         # Status bar
         self.status_bar = QStatusBar()
@@ -217,6 +250,7 @@ class MainWindow(QMainWindow):
                 sequence_info.concat_file = concat_file
 
             self.config.sequence_info = sequence_info
+            self.config.start_number = sequence_info.start_number
             self.sequence_info_widget.update_info(
                 sequence_info,
                 self.basic_settings.get_framerate()
@@ -561,6 +595,10 @@ class MainWindow(QMainWindow):
 
         QMessageBox.information(self, "FFMPEG Information", info_text)
 
+    def on_crop_changed_from_preview(self, x: int, y: int, w: int, h: int):
+        """Handle crop change from preview widget."""
+        self.filter_settings.on_crop_changed_from_preview(x, y, w, h)
+
     def _load_preview_image(self):
         """Load the first image from sequence into preview."""
         if not self.config.sequence_info:
@@ -573,7 +611,7 @@ class MainWindow(QMainWindow):
 
             if image_files:
                 first_image = image_files[0]
-                # Pass both the first image and the complete list for slider navigation
+                # Load image into preview widget with full sequence
                 self.filter_settings.load_preview_image(first_image, image_files)
 
         except Exception as e:
