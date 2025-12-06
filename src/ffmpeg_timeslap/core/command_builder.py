@@ -228,7 +228,22 @@ class FFmpegCommandBuilder:
             # Use rotate filter for arbitrary angles
             # Convert degrees to radians (PI/180)
             # Fill transparent areas with black
-            return f"rotate={angle}*PI/180:c=black:ow=iw:oh=ih"
+
+            # IMPORTANT: Calculate expanded bounding box to match GUI preview
+            # (filter_settings_widget.py lines 539-546)
+            # This ensures crop coordinates align between GUI and FFMPEG output
+            import math
+            rad = math.radians(angle)
+            cos_a = abs(math.cos(rad))
+            sin_a = abs(math.sin(rad))
+
+            # Build FFMPEG expression for expanded bounding box
+            # ow = original_width * cos(angle) + original_height * sin(angle)
+            # oh = original_width * sin(angle) + original_height * cos(angle)
+            ow_expr = f"iw*{cos_a:.10f}+ih*{sin_a:.10f}"
+            oh_expr = f"iw*{sin_a:.10f}+ih*{cos_a:.10f}"
+
+            return f"rotate={angle}*PI/180:c=black:ow='{ow_expr}':oh='{oh_expr}'"
 
     def _build_flip_filters(self) -> List[str]:
         """
